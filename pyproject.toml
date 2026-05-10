@@ -20,7 +20,8 @@ dependencies = [
     "torchmetrics (>=1.7.1,<2.0.0)",
     "tqdm (>=4.67.1,<5.0.0)",
     "wandb (>=0.19.9,<0.20.0)",
-    "lightning (>=2.5.1,<2.6.1)"
+    "lightning (>=2.5.1,<2.6.1)",
+    "xgboost (>=3.2.0,<4.0.0)"
 ]
 
 [build-system]
