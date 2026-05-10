@@ -1,0 +1,19 @@
+data:
+  # Target variable can be: 'Final_Exam_Score', 'Cost', 'Formalise', 'Stat', or 'MDM'
+  target_variable: "Final_Exam_Score"
+  data_folder: "data"
+  batch_size: 4
+  test_size: 0.2
+  val_size: 0.1
+  random_state: 42
+
+model:
+  hidden_dims: [128, 64, 8]
+  learning_rate: 0.0001
+
+trainer:
+  max_epochs: 50
+
+logging:
+  project: "quiz_prediction"
+  name: "run_with_dynamic_targets"

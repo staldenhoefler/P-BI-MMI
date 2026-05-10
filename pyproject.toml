@@ -1,0 +1,43 @@
+[project]
+name = "p-bi-mmi"
+version = "0.1.0"
+description = ""
+authors = [
+    {name = "denis.schatzmann@students.fhnw.ch",email = "denis.schatzmann@students.fhnw.ch"}
+]
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "jupyter (>=1.1.1,<2.0.0)",
+    "torch (>=2.6.0,<3.0.0)",
+    "torchvision (>=0.21.0,<0.22.0)",
+    "torchaudio (>=2.6.0,<3.0.0)",
+    "pandas (>=2.2.3,<3.0.0)",
+    "numpy (>=2.2.3,<3.0.0)",
+    "seaborn (>=0.13.2,<0.14.0)",
+    "scikit-learn (>=1.6.1,<2.0.0)",
+    "matplotlib (>=3.10.1,<4.0.0)",
+    "torchmetrics (>=1.7.1,<2.0.0)",
+    "tqdm (>=4.67.1,<5.0.0)",
+    "wandb (>=0.19.9,<0.20.0)",
+    "lightning (>=2.5.1,<2.6.1)"
+]
+
+[build-system]
+requires = ["poetry-core>=2.0.0,<3.0.0"]
+build-backend = "poetry.core.masonry.api"
+
+[tool.poetry]
+packages = [{include = "main", from = "src"}]
+package-mode = false
+
+[[tool.poetry.source]]
+name = "pytorch"
+url = "https://download.pytorch.org/whl/cu126"
+priority = "explicit"
+
+[tool.poetry.dependencies]
+python = ">=3.12"
+torch = { version = "=2.6.0+cu126", markers = "sys_platform == 'win32'", source = "pytorch" }
+torchvision = { version = ">=0.21.0,<0.22.0", markers = "sys_platform == 'win32'", source = "pytorch" }
+torchaudio = { version = ">=2.6.0,<3.0.0", markers = "sys_platform == 'win32'", source = "pytorch" }
