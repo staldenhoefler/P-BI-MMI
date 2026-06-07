@@ -1,7 +1,0 @@
-torch
-pytorch-lightning
-torchmetrics
-pyyaml
-scikit-learn
-pandas
-wandb

@@ -1,4 +1,14 @@
+"""Loading, cleaning and merging of the raw quiz/exam CSV files.
+
+This is the single source of truth for turning the raw anonymised semester
+files in ``data/`` into one tidy student-level dataframe. The merged frame
+contains, per student, aggregated quiz features plus the exam columns and the
+binary ``passed`` target (Final_Exam_Score >= 0.5).
+"""
+
 import os
+import re
+
 import pandas as pd
 
 
@@ -6,17 +16,18 @@ def clean_exam_data(df):
     """Clean the exam data by converting percentage strings to floats and calculating a final score."""
     # Find columns that might have percentage strings (excluding StudentID)
     exam_cols = [col for col in df.columns if col != 'StudentID']
-    
+
     for col in exam_cols:
         if df[col].dtype == object:
             # Remove '%' and convert to float
             df[col] = df[col].str.replace('%', '', regex=False).astype(float) / 100.0
-            
+
     # Calculate Final_Exam_Score as the mean of the topic columns
     df['Final_Exam_Score'] = df[exam_cols].mean(axis=1)
     return df
 
-def get_data(data_folder:str = 'data'):
+
+def get_data(data_folder: str = 'data'):
     """Load and merge the data from the given folder.
 
     Args:
@@ -37,44 +48,45 @@ def get_data(data_folder:str = 'data'):
     for semester in semesters:
         quiz_file = os.path.join(data_folder, f'{semester}_quiz_scores_anon.csv')
         exam_file = os.path.join(data_folder, f'{semester}_exam_scores_anon.csv')
-        
+
         quiz_df = None
         exam_df = None
-        
+
         if os.path.exists(quiz_file):
             print(f"Loading and cleaning quiz data for {semester}...")
             quiz_df = pd.read_csv(quiz_file, sep=';')
             quiz_df = clean_quiz_data(quiz_df)
-            
+
         if os.path.exists(exam_file):
             print(f"Loading and cleaning exam data for {semester}...")
             exam_df = pd.read_csv(exam_file, sep=';')
             exam_df = clean_exam_data(exam_df)
-            
+
         if quiz_df is not None and exam_df is not None:
             # Right join on StudentID to keep all students who took the exam (our target variable)
             print(f"Merging quiz and exam data for {semester}...")
             merged_semester = pd.merge(quiz_df, exam_df, on='StudentID', how='right')
             merged_semester['Semester'] = semester
             all_semesters_df.append(merged_semester)
-            
+
     if all_semesters_df:
         final_df = pd.concat(all_semesters_df, ignore_index=True)
-        
+
         # Fill NaN with 0 for 'Attempts' and 'Duration_minutes' columns
         zero_fill_cols = [c for c in final_df.columns if 'Attempts' in c or 'Duration_minutes' in c]
         if zero_fill_cols:
             final_df[zero_fill_cols] = final_df[zero_fill_cols].fillna(0)
-            
-        # Ensure Target is at the end (optional, but good practice)
+
         cols = final_df.columns.tolist()
         if 'Final_Exam_Score' in cols:
             cols.remove('Final_Exam_Score')
             cols.append('Final_Exam_Score')
             final_df = final_df[cols]
+        final_df['passed'] = final_df['Final_Exam_Score'] >= 0.5
         return final_df
-    
+
     return pd.DataFrame()
+
 
 def clean_quiz_data(df):
     df = df.drop(columns=['Status', 'StartedAt', 'FinishedAt'])
@@ -87,8 +99,6 @@ def clean_quiz_data(df):
 
     for quiz_name, quiz_df in quiz_dfs.items():
         quiz_dfs[quiz_name] = quiz_df.dropna(axis=1, how='all')
-
-    import re
 
     def duration_to_minutes(duration_str):
         """
@@ -118,7 +128,7 @@ def clean_quiz_data(df):
         quiz_df = quiz_df[quiz_df['Duration_minutes'] >= 1]
 
         # 2. Drop attempts where Score/10.00 is 0
-        quiz_df = quiz_df[quiz_df['Score/10.00'] != 0]
+        #quiz_df = quiz_df[quiz_df['Score/10.00'] != 0]
 
         # 3. Transform 'F x /y.yy' columns to relative scores (0 to 1)
         # Identify columns that match the 'F x /y.yy' pattern
@@ -194,3 +204,11 @@ def clean_quiz_data(df):
             merged_df = pd.merge(merged_df, df_to_merge, on='StudentID', how='outer')
 
     return merged_df
+
+
+def export_processed_data(data_folder: str = 'data', output_filename: str = 'data/Processed_Data.csv'):
+    """Load, merge and persist the processed dataset to CSV (replaces sklearn_pipeline.ipynb)."""
+    df = get_data(data_folder)
+    df.to_csv(output_filename, index=False)
+    print(f"Merged DataFrame exported to {output_filename}")
+    return df

@@ -1,0 +1,20 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.ipynb_checkpoints/
+
+# Weights & Biases
+wandb/
+part3/wandb/
+
+# Lightning / run artifacts
+part3/quiz_prediction/
+lightning_logs/
+
+# IDE
+.idea/
+.vscode/
+
+# OS
+.DS_Store
