@@ -95,6 +95,8 @@ def build_dataset(config: dict, df: pd.DataFrame | None = None) -> Dataset:
     feature_names = resolve_feature_names(data_cfg, df)
     X = df[feature_names].values.astype(np.float32)
 
+    # stratify=y keeps the (imbalanced) pass/fail ratio identical in train/test;
+    # without it a tiny test set can end up with almost no failures.
     X_train, X_test, y_train, y_test = train_test_split(
         X, y,
         test_size=data_cfg.get('test_size', 0.2),
@@ -115,3 +117,27 @@ def build_dataset(config: dict, df: pd.DataFrame | None = None) -> Dataset:
         feature_names=feature_names,
         scaler=scaler,
     )
+
+
+def build_full_xy(config: dict, df: pd.DataFrame | None = None):
+    """Return the full (unsplit, unscaled) feature matrix and labels.
+
+    Used by the stratified cross-validation in :func:`src.metrics.evaluate_cv`,
+    which needs every row and does its own per-fold scaling. Uses the *same*
+    feature resolution and imputation as :func:`build_dataset` so the CV stays
+    consistent with the single-split comparison.
+
+    Returns:
+        (X, y, feature_names) with X as float32 ndarray and y as int ndarray.
+    """
+    data_cfg = config['data']
+    target_col = data_cfg.get('target_variable', 'passed')
+
+    if df is None:
+        df = get_data(data_cfg.get('data_folder', 'data'))
+
+    df = df.fillna(0)
+    y = df[target_col].astype(int).values
+    feature_names = resolve_feature_names(data_cfg, df)
+    X = df[feature_names].values.astype(np.float32)
+    return X, y, feature_names

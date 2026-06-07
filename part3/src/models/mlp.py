@@ -21,9 +21,9 @@ from torchmetrics.classification import (
 class QuizMLPClassifier(pl.LightningModule):
     """Feed-forward binary classifier for pass/fail prediction."""
 
-    def __init__(self, input_dim, config):
+    def __init__(self, input_dim, config, class_weights=None):
         super().__init__()
-        self.save_hyperparameters(ignore=['config'])
+        self.save_hyperparameters(ignore=['config', 'class_weights'])
         self.config = config
         self.learning_rate = config['models']['mlp']['learning_rate']
 
@@ -43,7 +43,15 @@ class QuizMLPClassifier(pl.LightningModule):
         layers.append(nn.Linear(prev_dim, 2))
         self.network = nn.Sequential(*layers)
 
-        self.loss_fn = nn.CrossEntropyLoss()
+        # Class-weighted loss to counter the pass/fail imbalance. Weights are
+        # passed in (computed from the training labels) and registered as a
+        # buffer so they move to the right device with the model.
+        if class_weights is not None:
+            weight = torch.as_tensor(class_weights, dtype=torch.float32)
+            self.register_buffer('class_weights', weight)
+        else:
+            self.class_weights = None
+        self.loss_fn = nn.CrossEntropyLoss(weight=self.class_weights)
 
         # Metrics, mirroring src.metrics.compute_metrics keys.
         self.train_acc = BinaryAccuracy()

@@ -12,63 +12,77 @@ data:
   #   "selected" -> only the columns listed in `selected_features` below
   # (see notebooks/02_feature_selection.ipynb for how this list was derived)
   feature_set: "selected"
+  # Trimmed to a compact, interpretable shortlist (~4 features) because the
+  # dataset is tiny (~135 students, ~27 in test) and p >> n overfits badly.
+  # One mean quiz score per topic — the strongest, least-collinear signals from
+  # notebooks/02_feature_selection.ipynb.
   selected_features:
-    - 'statistics_Attempts'
-    - 'statistics_Score/10.00_mean'
-    - 'statistics_Score/10.00_max'
-    - 'statistics_Score/10.00_min'
-    - 'statistics_Duration_minutes_sum'
-    - 'statistics_Duration_minutes_mean'
-    - 'predictive_analytics_Attempts'
-    - 'predictive_analytics_Score/10.00_mean'
-    - 'predictive_analytics_Score/10.00_max'
-    - 'predictive_analytics_Score/10.00_min'
-    - 'predictive_analytics_Duration_minutes_sum'
-    - 'predictive_analytics_Duration_minutes_mean'
-    - 'evaluation_Attempts'
-    - 'evaluation_Score/10.00_mean'
-    - 'evaluation_Score/10.00_max'
-    - 'evaluation_Score/10.00_min'
-    - 'evaluation_Duration_minutes_sum'
-    - 'evaluation_Duration_minutes_mean'
-    - 'mdm_Attempts'
-    - 'mdm_Score/10.00_mean'
-    - 'mdm_Score/10.00_max'
-    - 'mdm_Score/10.00_min'
-    - 'mdm_Duration_minutes_sum'
-    - 'mdm_Duration_minutes_mean'
-    - 'regression_Attempts'
-    - 'regression_Score/10.00_mean'
-    - 'regression_Score/10.00_max'
-    - 'regression_Score/10.00_min'
-    - 'regression_Duration_minutes_sum'
-    - 'regression_Duration_minutes_mean'
+  - statistics_Attempts
+  - mdm_Attempts
+  - mdm_Score/10.00_mean
+  - evaluation_Duration_minutes_sum
+  - statistics_Duration_minutes_sum
+  - statistics_Score/10.00_mean
+  - predictive_analytics_Score/10.00_min
+  - regression_Duration_minutes_mean
+  - predictive_analytics_Attempts
+  - mdm_Duration_minutes_sum
 
 models:
   logreg:
     max_iter: 10000
-    C: 1.0
-    class_weight: null
+    # L1 + liblinear gives a sparse, regularised fit on the tiny imbalanced set;
+    # class_weight rebalances the ~2:1 pass/fail ratio.
+    penalty: l1
+    solver: liblinear
+    C: 0.5
+    class_weight: balanced
 
   xgboost:
-    n_estimators: 100
-    max_depth: 3
+    # Shallow, few trees to avoid overfitting ~108 training rows. scale_pos_weight
+    # is derived from the training labels at build time (see build_xgboost).
+    n_estimators: 50
+    max_depth: 2
     learning_rate: 0.1
     subsample: 1.0
     eval_metric: "logloss"
 
   mlp:
-    hidden_dims: [128, 64]
+    # One small hidden layer; class-weighted loss + early stopping for imbalance.
+    hidden_dims: [16]
     dropout: 0.2
     learning_rate: 0.0001
+    class_weight: balanced
+    early_stopping: true
+    patience: 5
 
 trainer:
   max_epochs: 50
+
+# Misclassification costs for the cost-matrix evaluation (see src/metrics.py).
+#
+# IMPORTANT — class orientation. sklearn orders labels "failed" < "passed", so the
+# POSITIVE class is `passed` (label 1). The business goal is an early-warning system
+# that flags students who will FAIL, so the expensive mistake is *missing a failing
+# student* — i.e. predicting "pass" for someone who actually fails. With positive =
+# passed, that error is a FALSE POSITIVE, and a false alarm (predict fail, actually
+# passes) is a FALSE NEGATIVE. Hence FP >> FN here:
+#   false_positive : missed at-risk student (predict pass, actually failed) -> costly
+#   false_negative : false alarm           (predict fail, actually passed)  -> cheap
+cost:
+  false_positive: 5.0
+  false_negative: 1.0
+
+# Stratified cross-validation for the pooled out-of-fold evaluation.
+cv:
+  n_splits: 5
 
 logging:
   project: "quiz_prediction"
   # Names of the three wandb runs (one per model).
   run_names:
-    logreg: "LogisticRegression_feature_selection_30"
-    xgboost: "XGBoost_feature_selection_30"
-    mlp: "MLP_feature_selection_30"
+    logreg: "LogisticRegression_fs10_normalised"
+    xgboost: "XGBoost_fs10_normalised"
+    mlp: "MLP_fs10_normalised"
+    dummy_most_frequent: "Dummy_most_frequent"
+    dummy_stratified: "Dummy_stratified"

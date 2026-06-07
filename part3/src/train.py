@@ -11,13 +11,15 @@ import argparse
 import numpy as np
 import pytorch_lightning as pl
 import yaml
+from pytorch_lightning.callbacks import EarlyStopping
 from pytorch_lightning.loggers import WandbLogger
+from sklearn.utils.class_weight import compute_class_weight
 
 from src.datamodule import QuizDataModule
 from src.features import build_dataset
 from src.metrics import compute_metrics, log_run_to_wandb
 from src.models.mlp import QuizMLPClassifier
-from src.models.sklearn_models import build_logreg, build_xgboost
+from src.models.sklearn_models import build_dummy, build_logreg, build_xgboost
 
 
 def load_config(path='config.yaml'):
@@ -26,9 +28,14 @@ def load_config(path='config.yaml'):
 
 
 def train_sklearn_model(name, build_fn, dataset, config):
-    """Fit a sklearn-style classifier on the shared split and log it to wandb."""
+    """Fit a sklearn-style classifier on the shared split and log it to wandb.
+
+    ``build_fn`` is called with ``(config, y_train)`` so models that need the
+    training labels (e.g. XGBoost's ``scale_pos_weight``) can use them; factories
+    that don't simply ignore the second argument.
+    """
     print(f"\n=== Training {name} ===")
-    model = build_fn(config)
+    model = build_fn(config, dataset.y_train)
     model.fit(dataset.X_train, dataset.y_train)
 
     y_pred = model.predict(dataset.X_test)
@@ -46,24 +53,42 @@ def train_sklearn_model(name, build_fn, dataset, config):
     return metrics
 
 
+def _mlp_class_weights(config, y_train):
+    """Balanced class weights for the MLP loss, or None if not requested."""
+    if config['models']['mlp'].get('class_weight') != 'balanced':
+        return None
+    classes = np.array([0, 1])
+    return compute_class_weight('balanced', classes=classes, y=np.asarray(y_train))
+
+
 def train_mlp(name, dataset, config):
     """Train the Lightning MLP on the shared split and log it to wandb."""
     print(f"\n=== Training {name} ===")
     datamodule = QuizDataModule(config, dataset=dataset)
     datamodule.setup('fit')
 
-    model = QuizMLPClassifier(input_dim=datamodule.input_dim, config=config)
+    class_weights = _mlp_class_weights(config, dataset.y_train)
+    model = QuizMLPClassifier(
+        input_dim=datamodule.input_dim, config=config, class_weights=class_weights,
+    )
 
     wandb_logger = WandbLogger(
         project=config['logging']['project'],
         name=name,
         config=config,
     )
+    callbacks = []
+    mlp_cfg = config['models']['mlp']
+    if mlp_cfg.get('early_stopping', False):
+        callbacks.append(EarlyStopping(
+            monitor='val_loss', patience=mlp_cfg.get('patience', 5), mode='min',
+        ))
     trainer = pl.Trainer(
         max_epochs=config['trainer']['max_epochs'],
         logger=wandb_logger,
         enable_checkpointing=False,
         log_every_n_steps=1,
+        callbacks=callbacks,
     )
     trainer.fit(model, datamodule=datamodule)
     trainer.test(model, datamodule=datamodule)
@@ -106,6 +131,16 @@ def main():
     run_names = config['logging'].get('run_names', {})
 
     results = {}
+
+    # Naive baselines first: every real model has to beat these. They use no
+    # features and go through the exact same compute_metrics / logging path.
+    results['Dummy (most_frequent)'] = train_sklearn_model(
+        run_names.get('dummy_most_frequent', 'Dummy_most_frequent'),
+        lambda cfg, y: build_dummy(cfg, y, strategy='most_frequent'), dataset, config)
+    results['Dummy (stratified)'] = train_sklearn_model(
+        run_names.get('dummy_stratified', 'Dummy_stratified'),
+        lambda cfg, y: build_dummy(cfg, y, strategy='stratified'), dataset, config)
+
     results['LogisticRegression'] = train_sklearn_model(
         run_names.get('logreg', 'LogisticRegression'), build_logreg, dataset, config)
     results['XGBoost'] = train_sklearn_model(
